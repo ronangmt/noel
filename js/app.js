@@ -7,7 +7,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {
   $, el, render, safeUrl, formatPrice, domainOf, hashPin, sleep, toast,
-  openModal, confirmDialog, startCountdown, screen,
+  openModal, confirmDialog, startCountdown, screen, compressImage, safePhoto,
 } from './common.js';
 import { startSnow } from './snow.js';
 
@@ -249,7 +249,7 @@ function emptyBox(emoji, text) {
 
 function wishCard(w, { footer, status } = {}) {
   const url = safeUrl(w.url);
-  const img = safeUrl(w.image);
+  const img = safePhoto(w.photo) || safeUrl(w.image);
   return el('article', { class: `wish-card ${status || ''}` },
     img && el('div', { class: 'wish-img' },
       el('img', { src: img, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer',
@@ -298,6 +298,36 @@ function openWishForm(w = null) {
   f.priority.value = String(w?.priority || 1);
   f.note.value = w?.note || '';
   const err = el('p', { class: 'form-error' });
+
+  // --- Photo depuis le téléphone (appareil photo ou galerie) ---
+  let photo = safePhoto(w?.photo) || '';
+  const fileInput = el('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', tabindex: '-1' });
+  const preview = el('div', { class: 'photo-preview' });
+  const pickBtn = el('button', { class: 'btn secondary', type: 'button', onclick: () => fileInput.click() });
+  const drawPhoto = () => {
+    pickBtn.textContent = photo ? '📷 Changer la photo' : '📷 Prendre / choisir une photo';
+    preview.replaceChildren(...(photo ? [
+      el('img', { src: photo, alt: 'Aperçu de la photo' }),
+      el('button', { class: 'btn danger small', type: 'button', onclick: () => { photo = ''; drawPhoto(); } }, '✕ Retirer'),
+    ] : []));
+  };
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) return;
+    pickBtn.disabled = true;
+    pickBtn.textContent = '⏳ Préparation de la photo…';
+    err.textContent = '';
+    try {
+      photo = await compressImage(file);
+    } catch (ex) {
+      console.error(ex);
+      err.textContent = 'Impossible d\'utiliser cette photo, essaies-en une autre.';
+    }
+    pickBtn.disabled = false;
+    drawPhoto();
+  });
+  drawPhoto();
   const save = el('button', { class: 'btn primary', type: 'submit' }, w ? 'Enregistrer' : 'Ajouter 🎁');
 
   const form = el('form', {
@@ -316,6 +346,8 @@ function openWishForm(w = null) {
         note: f.note.value.trim(),
         priority: Number(f.priority.value),
       };
+      // le champ photo n'est envoyé que s'il y a (ou s'il y avait) une photo
+      if (photo || w?.photo) data.photo = photo;
       if (!data.title) { err.textContent = 'Donne un nom à ton souhait.'; return; }
       save.disabled = true;
       try {
@@ -335,7 +367,10 @@ function openWishForm(w = null) {
   el('div', { class: 'form-row' },
     el('label', {}, 'Prix indicatif (€)', f.price),
     el('label', {}, 'Niveau d\'envie', f.priority)),
-  el('label', {}, el('span', {}, 'Image ', el('small', {}, '(clic droit sur une photo > « Copier l\'adresse de l\'image »)')), f.image),
+  el('div', { class: 'photo-field' },
+    el('span', { class: 'field-title' }, 'Photo'),
+    pickBtn, fileInput, preview),
+  el('label', {}, el('span', {}, 'ou lien d\'une image ', el('small', {}, '(clic droit sur une photo > « Copier l\'adresse de l\'image »)')), f.image),
   el('label', {}, 'Précisions', f.note),
   err,
   el('div', { class: 'modal-actions' },

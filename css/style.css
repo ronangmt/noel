@@ -242,6 +242,12 @@ textarea { resize: vertical; min-height: 70px; }
 .pin-input { text-align: center; font-size: 2rem; letter-spacing: .5em; padding: 12px; margin-top: 8px; }
 .form-error { color: var(--red); font-weight: 700; min-height: 1.2em; margin: 6px 0 0; }
 
+.photo-field { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.field-title { font-weight: 800; font-size: .92rem; }
+.photo-preview { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.photo-preview img { max-width: 160px; max-height: 160px; border-radius: 12px; border: 2px solid var(--line); object-fit: cover; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
 .emoji-pick { display: flex; flex-wrap: wrap; gap: 6px; }
 .emoji-pick button {
   font-size: 1.4rem; width: 44px; height: 44px; border-radius: 12px;

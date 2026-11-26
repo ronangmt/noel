@@ -69,10 +69,12 @@ service cloud.firestore {
 
     // ---- Souhaits ----
     function validWish(d) {
-      return d.keys().hasOnly(['ownerId', 'title', 'url', 'image', 'price', 'note', 'priority', 'createdAt', 'updatedAt'])
+      return d.keys().hasOnly(['ownerId', 'title', 'url', 'image', 'photo', 'price', 'note', 'priority', 'createdAt', 'updatedAt'])
         && d.title is string && d.title.size() > 0 && d.title.size() <= 150
         && d.url is string && d.url.size() <= 2000
         && d.image is string && d.image.size() <= 2000
+        // photo prise sur le téléphone, compressée en JPEG (champ facultatif)
+        && (!('photo' in d) || (d.photo is string && d.photo.size() <= 350000))
         && d.note is string && d.note.size() <= 500
         && (d.price == null || d.price is number)
         && d.priority is int && d.priority >= 1 && d.priority <= 3;

@@ -36,6 +36,42 @@ export function safeUrl(u) {
   }
 }
 
+// Photo prise ou choisie sur le téléphone : réduite et compressée en JPEG (~50-150 Ko)
+// pour être stockée directement dans la base (pas besoin de Firebase Storage, payant).
+export const MAX_PHOTO_CHARS = 350_000;
+export async function compressImage(file) {
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('image illisible'));
+      i.src = src;
+    });
+    let size = 900;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const scale = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const data = canvas.toDataURL('image/jpeg', attempt < 3 ? 0.75 : 0.6);
+      if (data.length <= MAX_PHOTO_CHARS) return data;
+      size = Math.round(size * 0.75);
+    }
+    throw new Error('image trop lourde');
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
+
+export function safePhoto(p) {
+  return typeof p === 'string' && p.startsWith('data:image/jpeg;base64,') ? p : null;
+}
+
 const priceFmt = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 export function formatPrice(n) {
   return typeof n === 'number' && !Number.isNaN(n) ? priceFmt.format(n) : '';
