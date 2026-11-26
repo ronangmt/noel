@@ -9,8 +9,9 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {
   $, el, render, safeUrl, formatPrice, hashPin, randomToken, randomPin, toast,
-  openModal, confirmDialog, promptDialog, copyText, startCountdown, screen, EMOJIS,
+  openModal, confirmDialog, promptDialog, copyText, startCountdown, screen, EMOJIS, safePhoto,
 } from './common.js';
+import { openWishForm } from './wishform.js';
 import { startSnow } from './snow.js';
 
 startSnow($('#snow-toggle'));
@@ -335,7 +336,11 @@ function viewLists() {
         wishes.length ? wishes.map(w => {
           const r = resById.get(w.id);
           const url = safeUrl(w.url);
+          const pic = safePhoto(w.photo) || safeUrl(w.image);
           return el('div', { class: 'gift-row' },
+            pic
+              ? el('img', { class: 'thumb', src: pic, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: e => e.target.replaceWith(el('span', { class: 'thumb empty-thumb' }, '⚠️')) })
+              : el('span', { class: 'thumb empty-thumb' }, '🎁'),
             el('div', { class: 'info' },
               el('strong', { text: w.title }),
               el('small', {}, [
@@ -343,6 +348,7 @@ function viewLists() {
                 state.spoilers ? (r ? `🔒 ${r.shared ? 'Commun' : 'Réservé'} : ${r.by.map(nameOf).join(', ')}` : '✅ Libre') : '',
               ].filter(Boolean).join(' · '))),
             url && el('a', { class: 'btn ghost small', href: url, target: '_blank', rel: 'noopener noreferrer' }, '🔗'),
+            el('button', { class: 'btn ghost small', type: 'button', onclick: () => editWish(w) }, '✏️ Modifier'),
             state.spoilers && r && el('button', { class: 'btn ghost small', type: 'button', onclick: () => cancelReservation(r, w.title) }, 'Annuler résa'),
             el('button', { class: 'btn danger small', type: 'button', onclick: () => deleteWish(w, r) }, '🗑️'));
         }) : el('p', { class: 'note' }, 'Liste vide.'));
@@ -353,6 +359,16 @@ function viewLists() {
         el('div', { class: 'info' }, el('strong', {}, `Pour ${nameOf(r.ownerId)}`), el('small', {}, `par ${r.by.map(nameOf).join(', ')}`)),
         el('button', { class: 'btn danger small', type: 'button', onclick: () => cancelReservation(r, 'ce souhait supprimé') }, 'Nettoyer')))),
   ];
+}
+
+function editWish(w) {
+  openWishForm({
+    wish: w,
+    title: `Souhait de ${nameOf(w.ownerId)}`,
+    saveLabel: 'Enregistrer',
+    successMsg: 'Souhait modifié ✏️',
+    onSave: data => updateDoc(doc(db, 'wishes', w.id), { ...data, updatedAt: serverTimestamp() }),
+  });
 }
 
 async function cancelReservation(r, title) {
