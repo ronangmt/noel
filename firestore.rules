@@ -1,0 +1,120 @@
+rules_version = '2';
+
+// Règles de sécurité de la liste de Noël.
+// À coller dans : Console Firebase > Firestore Database > Règles > Publier.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // Admin = compte dont l'UID existe dans la collection "admins" (créée à la main dans la console)
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Membre = appareil qui a validé un lien d'invitation encore valide + le bon PIN
+    function memberDoc() {
+      return get(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+    function isMember() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        && exists(/databases/$(database)/documents/invites/$(memberDoc().data.token));
+    }
+    function me() { return memberDoc().data.participantId; }
+
+    // ---- Administrateurs (lecture de son propre statut uniquement) ----
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ---- Invitations : lisibles seulement si on connaît le jeton (pas de listing) ----
+    match /invites/{token} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---- Empreintes des PIN : jamais lisibles, seulement vérifiées par les règles ----
+    match /pins/{token} {
+      allow read: if false;
+      allow write: if isAdmin();
+    }
+
+    // ---- Appareils connectés ----
+    match /members/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['participantId', 'token', 'pinHash', 'joinedAt'])
+        && request.resource.data.token is string
+        && get(/databases/$(database)/documents/invites/$(request.resource.data.token)).data.participantId
+           == request.resource.data.participantId
+        && get(/databases/$(database)/documents/pins/$(request.resource.data.token)).data.hash
+           == request.resource.data.pinHash;
+      allow delete: if (signedIn() && request.auth.uid == uid) || isAdmin();
+    }
+
+    // ---- Participants ----
+    match /participants/{pid} {
+      allow read: if isMember() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---- Réglages ----
+    match /settings/{id} {
+      allow read: if isMember() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---- Souhaits ----
+    function validWish(d) {
+      return d.keys().hasOnly(['ownerId', 'title', 'url', 'image', 'price', 'note', 'priority', 'createdAt', 'updatedAt'])
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 150
+        && d.url is string && d.url.size() <= 2000
+        && d.image is string && d.image.size() <= 2000
+        && d.note is string && d.note.size() <= 500
+        && (d.price == null || d.price is number)
+        && d.priority is int && d.priority >= 1 && d.priority <= 3;
+    }
+
+    match /wishes/{wid} {
+      allow read: if isMember() || isAdmin();
+      allow create: if isAdmin()
+        || (isMember() && request.resource.data.ownerId == me() && validWish(request.resource.data));
+      allow update: if isAdmin()
+        || (isMember() && resource.data.ownerId == me()
+            && request.resource.data.ownerId == me() && validWish(request.resource.data));
+      allow delete: if isAdmin() || (isMember() && resource.data.ownerId == me());
+    }
+
+    // ---- Réservations (id = id du souhait) ----
+    // Effet surprise : le propriétaire de la liste ne peut JAMAIS lire les réservations de ses souhaits.
+    match /reservations/{wid} {
+      allow read: if isAdmin() || (isMember() && resource.data.ownerId != me());
+
+      // Réserver un cadeau libre
+      allow create: if isMember()
+        && request.resource.data.keys().hasOnly(['ownerId', 'by', 'shared', 'createdAt'])
+        && request.resource.data.ownerId != me()
+        && request.resource.data.ownerId == get(/databases/$(database)/documents/wishes/$(wid)).data.ownerId
+        && request.resource.data.by == [me()]
+        && request.resource.data.shared is bool;
+
+      // Rejoindre ou quitter un cadeau commun (on ne peut ajouter/retirer que soi-même)
+      allow update: if isAdmin() || (isMember()
+        && resource.data.ownerId != me()
+        && resource.data.shared == true
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.shared == resource.data.shared
+        && request.resource.data.keys().hasOnly(['ownerId', 'by', 'shared', 'createdAt'])
+        && request.resource.data.by.size() > 0
+        && request.resource.data.by.toSet().difference(resource.data.by.toSet()).hasOnly([me()])
+        && resource.data.by.toSet().difference(request.resource.data.by.toSet()).hasOnly([me()]));
+
+      // Annuler sa réservation (seul participant restant)
+      allow delete: if isAdmin()
+        || (isMember() && resource.data.ownerId != me() && resource.data.by == [me()]);
+    }
+  }
+}
